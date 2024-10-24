@@ -20,51 +20,53 @@ import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Locale
 import android.app.usage.UsageEvents
+import android.app.usage.UsageStats
+
 fun Context.hasUsageStatsPermission(): Boolean {
     val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
     val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
+
 fun Context.requestUsageStatsPermission() {
     startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
 }
 
-fun getUsageStats(context: Context): List<UsageEvents.Event> {
+fun getUsageStats(context: Context): List<UsageStats> {
     val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
     val cal = Calendar.getInstance()
-    cal.add(Calendar.DAY_OF_YEAR, -7) // Get stats for the last 7 days
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
 
-    val usageEvents = usageStatsManager.queryEvents(cal.timeInMillis, System.currentTimeMillis())
-    val events = mutableListOf<UsageEvents.Event>()
-    val event = UsageEvents.Event()
-
-    while (usageEvents.hasNextEvent()) {
-        usageEvents.getNextEvent(event)
-        val newEvent = UsageEvents.Event().apply {
-        }
-        events.add(newEvent)
-    }
-
-    return events
+    return usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, cal.timeInMillis, System.currentTimeMillis())
 }
 
 fun runContext(context: Context) {
     if (context.hasUsageStatsPermission()) {
-        val usageEventsList = getUsageStats(context)
+        val usageStatsList = getUsageStats(context)
         Toast.makeText(context, "Usage Stats permission is obtained!", Toast.LENGTH_LONG).show()
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        for (event in usageEventsList) {
-            val date = dateFormat.format(event.timeStamp)
-            println("Package: ${event.packageName}, Event Type: ${event.eventType}, Time: $date")
+        val statsBuilder = StringBuilder()
+        for (usageStats in usageStatsList) {
+            val date = dateFormat.format(usageStats.lastTimeUsed)
+            val totalTimeInMins = usageStats.totalTimeInForeground / (1000 * 60)
+            val packageName = usageStats.packageName.substringAfterLast('.')
 
-        }
+            if (totalTimeInMins > 0){
+                statsBuilder.append("Package: $packageName, Total Time: $totalTimeInMins mins, Last Time Used: $date\n")
+            }
+            }
+        println(statsBuilder.toString())
     } else {
         Toast.makeText(context, "Usage Stats permission is required", Toast.LENGTH_LONG).show()
         context.requestUsageStatsPermission()
     }
 }
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

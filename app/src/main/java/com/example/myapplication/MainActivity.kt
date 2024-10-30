@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import android.app.AppOpsManager
+import android.app.usage.UsageEvents
 import android.content.Intent
 import android.provider.Settings
 import android.app.usage.UsageStatsManager
@@ -22,6 +23,7 @@ import android.app.usage.UsageStats
 import android.content.ContentValues
 import android.provider.MediaStore
 import android.content.Context
+import android.content.pm.PackageManager
 import java.util.Date
 
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
@@ -68,31 +70,94 @@ fun Context.requestUsageStatsPermission() {
 fun getUsageStats(context: Context): List<UsageStats> {
     val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val cal = Calendar.getInstance()
+    cal.set(Calendar.DAY_OF_YEAR, cal.get(Calendar.DAY_OF_YEAR) - 10)
     cal.set(Calendar.HOUR_OF_DAY, 0)
     cal.set(Calendar.MINUTE, 0)
     cal.set(Calendar.SECOND, 0)
     cal.set(Calendar.MILLISECOND, 0)
-    return usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, cal.timeInMillis, System.currentTimeMillis())
+    return usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_BEST, cal.timeInMillis, System.currentTimeMillis())
 }
+
+fun getUsageEvents(context: Context): UsageEvents {
+    val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    val cal = Calendar.getInstance()
+    cal.set(Calendar.DAY_OF_YEAR, cal.get(Calendar.DAY_OF_YEAR) - 14)
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    println("${cal.timeInMillis}, ${System.currentTimeMillis()}")
+    return usageStatsManager.queryEvents(cal.timeInMillis, System.currentTimeMillis())
+}
+
+fun printUsageEvents(context: Context) {
+    val usageEvents = getUsageEvents(context)
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    val statsBuilder = StringBuilder()
+    while (usageEvents.hasNextEvent()) {
+        val event = UsageEvents.Event()
+        usageEvents.getNextEvent(event)
+        val date = dateFormat.format(event.timeStamp)
+        statsBuilder.append("Package: ${event.packageName}, Type: ${event.eventType}, Time: $date\n")
+    }
+    println(statsBuilder.toString())
+}
+
+
 
 fun runContext(context: Context): ArrayList<String> {
     val resultList = ArrayList<String>()
     if (context.hasUsageStatsPermission()) {
         val usageStatsList = getUsageStats(context)
         Toast.makeText(context, "Usage Stats permission is obtained!", Toast.LENGTH_LONG).show()
+
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val packageManager = context.packageManager
         val statsBuilder = StringBuilder()
         for (usageStats in usageStatsList) {
+            val appName = try {
+                // Try multiple methods to get the app name
+                val applicationInfo = packageManager.getApplicationInfo(
+                    usageStats.packageName,
+                    PackageManager.GET_META_DATA or
+                            PackageManager.GET_SHARED_LIBRARY_FILES or
+                            PackageManager.GET_UNINSTALLED_PACKAGES
+                )
+
+                // First try: Get label from application info
+                val nameFromLabel = packageManager.getApplicationLabel(applicationInfo).toString()
+
+                if (nameFromLabel != usageStats.packageName) {
+                    nameFromLabel
+                } else {
+                    // Second try: Get name from package info
+                    val packageInfo = packageManager.getPackageInfo(usageStats.packageName, 0)
+                    val nameFromPackage = packageInfo.applicationInfo.loadLabel(packageManager).toString()
+
+                    if (nameFromPackage != usageStats.packageName) {
+                        nameFromPackage
+                    } else {
+                        // Fallback: Use last part of package name but make it more readable
+                        usageStats.packageName.substringAfterLast('.').split("(?<=.)(?=\\p{Upper})".toRegex())
+                            .joinToString(" ").capitalize()
+                    }
+                }
+            } catch (e: Exception) {
+                // If all methods fail, make the package name more readable
+                usageStats.packageName.substringAfterLast('.').split("(?<=.)(?=\\p{Upper})".toRegex())
+                    .joinToString(" ").capitalize()
+            }
             val date = dateFormat.format(usageStats.lastTimeUsed)
 
-            // get the usageStats ouptut in a readable format
-
+            // get the usageStats output in a readable format
+            val packageName = appName
             val totalTimeInMins = usageStats.totalTimeInForeground / (1000 * 60)
-            val packageName = usageStats.packageName.substringAfterLast('.')
+
 
             if (totalTimeInMins > 0) {
                 statsBuilder.append("Package: $packageName, Total Time: $totalTimeInMins mins, Last Time Used: $date\n")
                 resultList.add("$packageName, $totalTimeInMins, $date\n")
+
             }
         }
     } else {

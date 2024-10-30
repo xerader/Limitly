@@ -24,6 +24,8 @@ import android.content.ContentValues
 import android.provider.MediaStore
 import android.content.Context
 import android.content.pm.PackageManager
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import java.util.Date
 
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
@@ -185,7 +187,60 @@ fun runContext(context: Context, top: Boolean): ArrayList<String> {
 }
 // check if i have write permission
 
+// get all the time epochs for a given app in the last day
+fun getUsageEvents(context: Context, packageName: String): List<Long> {
+    val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    val calStart = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -1) // Set to the previous day
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val calEnd = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -1) // Same day as start
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }
 
+    val events = usageStatsManager.queryEvents(calStart.timeInMillis, calEnd.timeInMillis)
+    val eventList = mutableListOf<Long>()
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    while (events.hasNextEvent()) {
+        val event = UsageEvents.Event()
+        events.getNextEvent(event)
+        if (event.packageName == packageName) {
+            val date = dateFormat.format(event.timeStamp)
+            eventList.add(event.timeStamp)
+        }
+    }
+    return eventList
+}
+
+// print event list to console
+
+@Composable
+fun PrintEventList(context: Context, packageName: String) {
+    val eventList = getUsageEvents(context, packageName)
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    var newStart = eventList[0]
+    val newData = ArrayList<String>()
+    newData.add("Start Time, End Time, Elapsed Time")
+    for (i in 1 until eventList.size) {
+        if (eventList[i] - eventList[i - 1] > 5 * 60 * 1000) {
+            newData.add(" ${dateFormat.format(newStart)},  ${dateFormat.format(eventList[i - 1])},  ${(eventList[i - 1] - newStart) / (1000 * 60)} mins and ${(eventList[i - 1] - newStart) / 1000 % 60} seconds")
+            newStart = eventList[i]
+        }
+    }
+
+    LazyColumn {
+        items(newData) { event ->
+            Text(text = event
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
 //get the calendar date
@@ -199,13 +254,13 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Greeting("Bob")
                     val resList = runContext(this, true)
                     // whatever the date is in the first entry in reslist
                     var title = resList[0].split(",")[2]
-                    writeTextFileToDocuments(this, title, resList.joinToString("\n"))
+//                    writeTextFileToDocuments(this, title, resList.joinToString("\n"))
+                    PrintEventList(this, "com.google.android.youtube")
                     }
-                                    }
+                }
             }
         }
     }

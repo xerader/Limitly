@@ -16,18 +16,23 @@ import android.content.Intent
 import android.provider.Settings
 import android.app.usage.UsageStatsManager
 import java.util.Calendar
-import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Locale
 import android.app.usage.UsageStats
-import android.content.ContentValues
-import android.provider.MediaStore
-import android.content.Context
 import android.content.pm.PackageManager
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import java.util.Date
 import java.io.File
+import android.content.ContentValues
+import android.content.Context
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
 fun ensureFolderExists(folderPath: String): Boolean {
     val folder = File(folderPath)
@@ -36,6 +41,7 @@ fun ensureFolderExists(folderPath: String): Boolean {
     }
     return true // Folder already exists
 }
+
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
     val resolver = context.contentResolver
 
@@ -43,13 +49,29 @@ fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: St
     val contentValues = ContentValues().apply {
         put(MediaStore.Files.FileColumns.DISPLAY_NAME, fileName)  // File name
         put(MediaStore.Files.FileColumns.MIME_TYPE, "text/plain")  // MIME type
-        put(MediaStore.Files.FileColumns.RELATIVE_PATH, "Documents/Limitly/") // Save to Limitly folder in Documents
+        put(MediaStore.Files.FileColumns.RELATIVE_PATH, "Documents/Limitly") // Save to Limitly folder in Documents
     }
-    ensureFolderExists("${context.filesDir}/Documents/Limitly/")
-    Toast.makeText(context, "Folder created!", Toast.LENGTH_LONG).show()
 
+    // Check if the file already exists and get its URI if so
+    val existingUri = resolver.query(
+        MediaStore.Files.getContentUri("external"),
+        arrayOf(MediaStore.Files.FileColumns._ID),
+        "${MediaStore.Files.FileColumns.RELATIVE_PATH}=? AND ${MediaStore.Files.FileColumns.DISPLAY_NAME}=?",
+        arrayOf("Documents/Limitly", fileName),
+        null
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID))
+            MediaStore.Files.getContentUri("external", id)
+        } else null
+    }
 
-    // Insert the file and get its URI
+    // If file exists, delete it to avoid duplicates (for overwriting)
+    existingUri?.let {
+        resolver.delete(it, null, null)
+    }
+
+    // Insert the new file and get its URI
     val uri = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
 
     if (uri != null) {
@@ -58,13 +80,13 @@ fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: St
             if (outputStream != null) {
                 outputStream.write(fileContent.toByteArray())
                 outputStream.flush()
-                println("File written successfully to Limitly folder in Documents!")
+                Toast.makeText(context, "File written successfully to Limitly folder in Documents!", Toast.LENGTH_LONG).show()
             } else {
-                println("Failed to create output stream.")
+                Toast.makeText(context, "Failed to create output stream.", Toast.LENGTH_LONG).show()
             }
         }
     } else {
-        println("Failed to insert file into MediaStore.")
+        Toast.makeText(context, "Failed to insert file into MediaStore.", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -112,29 +134,7 @@ fun topUsedApps(context: Context): ArrayList<String> {
 
 
 
-
-fun getOldUsageStats(context: Context): List<UsageStats> {
-    val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-    val calStart = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_YEAR, -1) // Set to the previous day
-        set(Calendar.MONTH, -1)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val calEnd = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_YEAR, -1) // Same day as start
-        set(Calendar.HOUR_OF_DAY, 23)
-        set(Calendar.MINUTE, 59)
-        set(Calendar.SECOND, 59)
-        set(Calendar.MILLISECOND, 999)
-    }
-    return usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, calStart.timeInMillis, calEnd.timeInMillis)
-}
-
-// get all the time epochs for a given app in the last day
-fun getUsageEvents(context: Context, packageName: String): List<Long> {
+fun getOldUsageEvents(context: Context, packageName: String): List<Long> {
     val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val calStart = Calendar.getInstance().apply {
         add(Calendar.MONTH, -1) // Set to one month ago
@@ -152,6 +152,36 @@ fun getUsageEvents(context: Context, packageName: String): List<Long> {
     }
     val events = usageStatsManager.queryEvents(calStart.timeInMillis, calEnd.timeInMillis)
     val eventList = mutableListOf<Long>()
+    while (events.hasNextEvent()) {
+        val event = UsageEvents.Event()
+        events.getNextEvent(event)
+        if (event.packageName == packageName) {
+            eventList.add(event.timeStamp)
+        }
+    }
+    return eventList
+}
+
+// get all the time epochs for a given app in the last day
+fun getUsageEvents(context: Context, packageName: String): List<Long> {
+  val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+val calStart = Calendar.getInstance().apply {
+    add(Calendar.DAY_OF_YEAR, -1) // Set to 24 hours ago
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}
+
+val calEnd = Calendar.getInstance().apply {
+    set(Calendar.HOUR_OF_DAY, 23)
+    set(Calendar.MINUTE, 59)
+    set(Calendar.SECOND, 59)
+    set(Calendar.MILLISECOND, 999)
+}
+
+    val events = usageStatsManager.queryEvents(calStart.timeInMillis, calEnd.timeInMillis)
+    val eventList = mutableListOf<Long>()
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     while (events.hasNextEvent()) {
         val event = UsageEvents.Event()
@@ -165,16 +195,18 @@ fun getUsageEvents(context: Context, packageName: String): List<Long> {
 }
 
 
-@Composable
 fun printEventList(context: Context, packageNames: ArrayList<String>, printState: Boolean, oldState: Boolean): ArrayList<String> {
     val newData = ArrayList<String>()
 
     newData.add("Package Name, Start Time, End Time, Duration")
     for (packageName in packageNames) {
+        var eventList = List<Long>(0) { 0 }
         if (oldState){
-            val eventList = getOldUsageStats(context, packageName)
+            eventList = getOldUsageEvents(context, packageName)
         }
-        val eventList = getUsageEvents(context, packageName)
+        else{
+            eventList = getUsageEvents(context, packageName)
+        }
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         var newStart = eventList[0]
         for (i in 1 until eventList.size) {
@@ -192,21 +224,17 @@ fun printEventList(context: Context, packageNames: ArrayList<String>, printState
         }
     }
     if (printState) {
-        LazyColumn {
-            items(newData) { event ->
-                Text(text = event)
-            }
+        for (data in newData) {
+            println(data)
         }
     }
     return newData
 }
 
-@Composable
-fun getOldData(context: Context): ArrayList<String> {
+fun getOldData(context: Context) {
     val topApps = topUsedApps(context)
-    val oldData = printEventList(context, topApps, false)
+    val oldData = printEventList(context, topApps, false, true)
     writeTextFileToDocuments(context, "oldData", oldData.joinToString("\n"))
-    return oldData
 }
 
 
@@ -222,6 +250,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    GetOldDataButton()
                     // if the config file does not exist, create it
 //                    generateConfigFile(this)
 
@@ -237,7 +266,7 @@ class MainActivity : ComponentActivity() {
                     // title is today's date
                     val title = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                     // get the event list for the top apps
-                    val todaysDat= printEventList(this, topUsedApps(this), true)
+                    val todaysDat= printEventList(this, topUsedApps(this), true, false)
                     writeTextFileToDocuments(this, title, todaysDat.joinToString("\n"))
 
                 }
@@ -247,7 +276,20 @@ class MainActivity : ComponentActivity() {
     }
 
 
+@Composable
+fun GetOldDataButton() {
+    val context = LocalContext.current
 
+    Button(
+        onClick = {
+            getOldData(context)
+        },
+        modifier = Modifier.size(20.dp, 40.dp) // Adjust the size as needed
+
+    ) {
+        Text("Get Old Data")
+    }
+}
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
     Text(

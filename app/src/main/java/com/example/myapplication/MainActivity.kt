@@ -27,7 +27,15 @@ import android.content.pm.PackageManager
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import java.util.Date
+import java.io.File
 
+fun ensureFolderExists(folderPath: String): Boolean {
+    val folder = File(folderPath)
+    if (!folder.exists()) {
+        return folder.mkdirs() // Creates the folder and returns true if successful
+    }
+    return true // Folder already exists
+}
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
     val resolver = context.contentResolver
 
@@ -35,19 +43,22 @@ fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: St
     val contentValues = ContentValues().apply {
         put(MediaStore.Files.FileColumns.DISPLAY_NAME, fileName)  // File name
         put(MediaStore.Files.FileColumns.MIME_TYPE, "text/plain")  // MIME type
-        put(MediaStore.Files.FileColumns.RELATIVE_PATH, "Documents/") // Save to Documents folder
+        put(MediaStore.Files.FileColumns.RELATIVE_PATH, "Documents/Limitly/") // Save to Limitly folder in Documents
     }
+    ensureFolderExists("${context.filesDir}/Documents/Limitly/")
+    Toast.makeText(context, "Folder created!", Toast.LENGTH_LONG).show()
+
 
     // Insert the file and get its URI
     val uri = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
 
     if (uri != null) {
         // Open an output stream and write to the file
-        resolver.openOutputStream(uri, "wa").use { outputStream ->
+        resolver.openOutputStream(uri, "w").use { outputStream ->
             if (outputStream != null) {
                 outputStream.write(fileContent.toByteArray())
                 outputStream.flush()
-                println("File written successfully to Documents folder!")
+                println("File written successfully to Limitly folder in Documents!")
             } else {
                 println("Failed to create output stream.")
             }
@@ -69,7 +80,7 @@ fun Context.requestUsageStatsPermission() {
 }
 
 // get top 10 most used apps in the last month
-fun topUsedApps(context: Context): List<UsageStats> {
+fun topUsedApps(context: Context): ArrayList<String> {
     val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val calStart = Calendar.getInstance().apply {
         add(Calendar.MONTH, -1) // Set to one month ago
@@ -80,27 +91,33 @@ fun topUsedApps(context: Context): List<UsageStats> {
     }
     val calEnd = Calendar.getInstance() // Set to current time
 
-    val usageStats = usageStatsManager.queryUsageStats(
+    var usageStats = usageStatsManager.queryUsageStats(
         UsageStatsManager.INTERVAL_YEARLY,
         calStart.timeInMillis,
         calEnd.timeInMillis
     )
 
     // Sort the apps by total usage time in descending order and get the top 10
-    return usageStats
+    usageStats = usageStats
 //        .filter { !it.packageName.contains("android", ignoreCase = true) && !it.packageName.contains("frontpage", ignoreCase = true) }
         .sortedByDescending { it.totalTimeInForeground }
         .take(10)
-
+    // get the names of the top 10 apps
+    val topApps = ArrayList<String>()
+    for (usageStat in usageStats) {
+        topApps.add(usageStat.packageName)
+    }
+    return topApps
 }
 
 
 
 
-fun getUsageStats(context: Context): List<UsageStats> {
+fun getOldUsageStats(context: Context): List<UsageStats> {
     val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val calStart = Calendar.getInstance().apply {
         add(Calendar.DAY_OF_YEAR, -1) // Set to the previous day
+        set(Calendar.MONTH, -1)
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
@@ -116,95 +133,23 @@ fun getUsageStats(context: Context): List<UsageStats> {
     return usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, calStart.timeInMillis, calEnd.timeInMillis)
 }
 
-
-fun runContext(context: Context, top: Boolean): ArrayList<String> {
-    val resultList = ArrayList<String>()
-    if (context.hasUsageStatsPermission()) {
-        val usageStatsList: List<UsageStats>
-        if (top){
-            usageStatsList = topUsedApps(context)
-        }
-        else {
-            usageStatsList = getUsageStats(context)
-        }
-        Toast.makeText(context, "Usage Stats permission is obtained!", Toast.LENGTH_LONG).show()
-
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val packageManager = context.packageManager
-        val statsBuilder = StringBuilder()
-        for (usageStats in usageStatsList) {
-            val appName = try {
-                // Try multiple methods to get the app name
-                val applicationInfo = packageManager.getApplicationInfo(
-                    usageStats.packageName,
-                    PackageManager.GET_META_DATA or
-                            PackageManager.GET_SHARED_LIBRARY_FILES or
-                            PackageManager.GET_UNINSTALLED_PACKAGES
-                )
-
-                // First try: Get label from application info
-                val nameFromLabel = packageManager.getApplicationLabel(applicationInfo).toString()
-
-                if (nameFromLabel != usageStats.packageName) {
-                    nameFromLabel
-                } else {
-                    // Second try: Get name from package info
-                    val packageInfo = packageManager.getPackageInfo(usageStats.packageName, 0)
-                    val nameFromPackage = packageInfo.applicationInfo.loadLabel(packageManager).toString()
-
-                    if (nameFromPackage != usageStats.packageName) {
-                        nameFromPackage
-                    } else {
-                        // Fallback: Use last part of package name but make it more readable
-                        usageStats.packageName.substringAfterLast('.').split("(?<=.)(?=\\p{Upper})".toRegex())
-                            .joinToString(" ").capitalize()
-                    }
-                }
-            } catch (e: Exception) {
-                // If all methods fail, make the package name more readable
-                usageStats.packageName.substringAfterLast('.').split("(?<=.)(?=\\p{Upper})".toRegex())
-                    .joinToString(" ").capitalize()
-            }
-            val date = dateFormat.format(usageStats.firstTimeStamp)
-
-            // get the usageStats output in a readable format
-            val packageName = usageStats.packageName
-            val totalTimeInMins = usageStats.totalTimeInForeground / (1000 * 60)
-
-
-            if (totalTimeInMins > 0) {
-                statsBuilder.append("Package: $packageName, Total Time: $totalTimeInMins mins, Last Time Used: $date\n")
-                resultList.add("$packageName, $totalTimeInMins, $date\n")
-
-            }
-        }
-    } else {
-        Toast.makeText(context, "Usage Stats permission is required", Toast.LENGTH_LONG).show()
-        context.requestUsageStatsPermission()
-
-    }
-    return resultList
-}
-// check if i have write permission
-
 // get all the time epochs for a given app in the last day
 fun getUsageEvents(context: Context, packageName: String): List<Long> {
     val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val calStart = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_YEAR, -1) // Set to the previous day
+        add(Calendar.MONTH, -1) // Set to one month ago
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
     }
     val calEnd = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_YEAR, -1) // Same day as start
+        add(Calendar.DAY_OF_YEAR, -1) // Set to one day before today
         set(Calendar.HOUR_OF_DAY, 23)
         set(Calendar.MINUTE, 59)
         set(Calendar.SECOND, 59)
         set(Calendar.MILLISECOND, 999)
     }
-
     val events = usageStatsManager.queryEvents(calStart.timeInMillis, calEnd.timeInMillis)
     val eventList = mutableListOf<Long>()
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -219,28 +164,51 @@ fun getUsageEvents(context: Context, packageName: String): List<Long> {
     return eventList
 }
 
-// print event list to console
 
 @Composable
-fun PrintEventList(context: Context, packageName: String) {
-    val eventList = getUsageEvents(context, packageName)
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-    var newStart = eventList[0]
+fun printEventList(context: Context, packageNames: ArrayList<String>, printState: Boolean, oldState: Boolean): ArrayList<String> {
     val newData = ArrayList<String>()
-    newData.add("Start Time, End Time, Elapsed Time")
-    for (i in 1 until eventList.size) {
-        if (eventList[i] - eventList[i - 1] > 5 * 60 * 1000) {
-            newData.add(" ${dateFormat.format(newStart)},  ${dateFormat.format(eventList[i - 1])},  ${(eventList[i - 1] - newStart) / (1000 * 60)} mins and ${(eventList[i - 1] - newStart) / 1000 % 60} seconds")
-            newStart = eventList[i]
-        }
-    }
 
-    LazyColumn {
-        items(newData) { event ->
-            Text(text = event
+    newData.add("Package Name, Start Time, End Time, Duration")
+    for (packageName in packageNames) {
+        if (oldState){
+            val eventList = getOldUsageStats(context, packageName)
+        }
+        val eventList = getUsageEvents(context, packageName)
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        var newStart = eventList[0]
+        for (i in 1 until eventList.size) {
+            if (eventList[i] - eventList[i - 1] > 60 * 60 * 1000) {
+                newData.add(
+                    " ${packageName}, ${dateFormat.format(newStart)},  ${
+                        dateFormat.format(
+                            eventList[i - 1]
+                        )
+                    },  ${(eventList[i - 1] - newStart) / (1000 * 60)} mins and ${(eventList[i - 1] - newStart) / 1000 % 60} seconds"
+                )
+                newStart = eventList[i]
+
+            }
         }
     }
+    if (printState) {
+        LazyColumn {
+            items(newData) { event ->
+                Text(text = event)
+            }
+        }
+    }
+    return newData
 }
+
+@Composable
+fun getOldData(context: Context): ArrayList<String> {
+    val topApps = topUsedApps(context)
+    val oldData = printEventList(context, topApps, false)
+    writeTextFileToDocuments(context, "oldData", oldData.joinToString("\n"))
+    return oldData
+}
+
 
 class MainActivity : ComponentActivity() {
 //get the calendar date
@@ -254,17 +222,29 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val resList = runContext(this, true)
-                    // whatever the date is in the first entry in reslist
-                    var title = resList[0].split(",")[2]
-//                    writeTextFileToDocuments(this, title, resList.joinToString("\n"))
-                    PrintEventList(this, "com.google.android.youtube")
-                    }
+                    // if the config file does not exist, create it
+//                    generateConfigFile(this)
+
+//                    val resList = runContext(this)
+//                    // whatever the date is in the first entry in reslist
+//                    val title = resList[0].split(",")[2]
+
+
+
+                    // write to config file
+//                    writeTextFileToDocuments(this, "config", "Old Data: True\n")
+
+                    // title is today's date
+                    val title = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                    // get the event list for the top apps
+                    val todaysDat= printEventList(this, topUsedApps(this), true)
+                    writeTextFileToDocuments(this, title, todaysDat.joinToString("\n"))
+
+                }
                 }
             }
         }
     }
-
 
 
 

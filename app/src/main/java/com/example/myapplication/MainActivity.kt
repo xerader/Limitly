@@ -355,8 +355,9 @@ class MainActivity : ComponentActivity() {
                     val py = Python.getInstance()
                     val pyf = py.getModule("main")
                     val res = pyf.callAttr("main")
-                    println(res)
 
+
+                    println(res)
 
                     // get data for today
                     val todaysDat= printEventList(this, topUsedApps(this),  true, false)

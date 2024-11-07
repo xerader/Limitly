@@ -1,2 +1,8 @@
+
+import numpy
+import os
+
 def main():
-    return "hi"
+# move to documents folder
+    os.chdir('/storage/emulated/0/Documents/Limitly/')
+    return os.getcwd()

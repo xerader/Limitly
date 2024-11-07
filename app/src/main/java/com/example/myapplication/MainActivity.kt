@@ -29,6 +29,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import java.util.Date
 import java.io.File
+import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
+import com.chaquo.python.PyException
 
 fun ensureFolderExists(folderPath: String): Boolean {
     val folder = File(folderPath)
@@ -193,6 +196,8 @@ fun getUsageEvents(context: Context, packageName: String): List<Long> {
     return try {
         val events = usageStatsManager.queryEvents(calStart.timeInMillis, calEnd.timeInMillis)
         val eventList = mutableListOf<Long>()
+        // print length of events
+        println(events)
 
         if (events != null) {
             val event = UsageEvents.Event()
@@ -205,6 +210,9 @@ fun getUsageEvents(context: Context, packageName: String): List<Long> {
                     }
                 }
             }
+        }
+        else {
+            Log.d("UsageStats", "No events found for $packageName")
         }
 
         // Log the size of the list for debugging
@@ -234,6 +242,11 @@ fun printEventList(context: Context, packageNames: ArrayList<String>, printState
         } else {
             getUsageEvents(context, packageName)
         }
+
+        if (eventList.isEmpty()) {
+            continue
+        }
+
         println("Old State: ${oldState.toString()}")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         var newStart = eventList[0]
@@ -335,17 +348,24 @@ class MainActivity : ComponentActivity() {
                     if (!readConfigFile(this)) {
                         initializeFiles(this)
                     }
+
+                    if (! Python.isStarted()){
+                        Python.start(AndroidPlatform(this))
+                    }
+                    val py = Python.getInstance()
+                    val pyf = py.getModule("main")
+                    val res = pyf.callAttr("main")
+                    println(res)
+
+
                     // get data for today
                     val todaysDat= printEventList(this, topUsedApps(this),  true, false)
                     writeTextFileToDocuments(this, "data.txt", todaysDat.joinToString("\n"))
-
                 }
                 }
             }
         }
     }
-
-
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {

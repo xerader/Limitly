@@ -63,6 +63,9 @@ chaquopy{
             buildPython("\"C:\\Users\\Biratal\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\\python.exe\"")
             pip {
                 install("numpy")
+                install("pandas")
+                install("scipy")
+                install("matplotlib")
             }
         }
         productFlavors { }

@@ -25,8 +25,11 @@ import android.content.ContentValues
 import android.provider.MediaStore
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import java.util.Date
 import java.io.File
 import com.chaquo.python.Python
@@ -332,6 +335,19 @@ fun readConfigFile(context: Context): Boolean {
     }
     return false
 }
+fun getPeaks() {
+    val py = Python.getInstance()
+    val pyf = py.getModule("main")
+    val res = pyf.callAttr("main")
+
+    val pyf2 = py.getModule("get_peaks")
+    val res2 = pyf2.callAttr("get_peaks")
+    println("HIIERERAARARA")
+    println(res2)
+
+    println(res)
+}
+
 
 class MainActivity : ComponentActivity() {
 //get the calendar date
@@ -345,29 +361,38 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    if (!Python.isStarted()) {
+                        Python.start(AndroidPlatform(this))
+                    }
+
                     if (!readConfigFile(this)) {
                         initializeFiles(this)
                     }
 
-                    if (! Python.isStarted()){
-                        Python.start(AndroidPlatform(this))
-                    }
-                    val py = Python.getInstance()
-                    val pyf = py.getModule("main")
-                    val res = pyf.callAttr("main")
-
-
-                    println(res)
 
                     // get data for today
                     val todaysDat= printEventList(this, topUsedApps(this),  true, false)
                     writeTextFileToDocuments(this, "data.txt", todaysDat.joinToString("\n"))
+
+                    ShowButton { getPeaks() }
+
                 }
                 }
             }
         }
     }
-
+@Composable
+fun ShowButton(onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize()){
+        Button(onClick = onClick,
+            modifier = Modifier
+                .weight(2f)
+                .fillMaxWidth()
+        ) {
+            Text("Get Peaks") // Button label
+        }
+    }
+}
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
     Text(

@@ -35,6 +35,32 @@ import java.io.File
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.chaquo.python.PyException
+import android.content.BroadcastReceiver
+import androidx.compose.foundation.layout.Row
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequest
+import androidx.work.WorkManager
+
+import androidx.work.Worker
+import androidx.work.WorkerParameters
+import java.util.concurrent.TimeUnit
+
+class DailyTaskWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+    override fun doWork(): Result {
+        return try {
+            // Generate data and write to file
+            val todaysData = printEventList(applicationContext, topUsedApps(applicationContext), true, false)
+            writeTextFileToDocuments(applicationContext, "data.txt", todaysData.joinToString("\n"))
+
+            // Indicate success
+            Result.success()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Indicate failure in the work
+            Result.failure()
+        }
+    }
+}
 
 fun ensureFolderExists(folderPath: String): Boolean {
     val folder = File(folderPath)
@@ -235,7 +261,6 @@ fun getUsageEvents(context: Context, packageName: String): List<Long> {
     }
 }
 
-@Composable
 fun printEventList(context: Context, packageNames: ArrayList<String>, printState: Boolean, oldState: Boolean): ArrayList<String> {
     val newData = ArrayList<String>()
 
@@ -267,17 +292,10 @@ fun printEventList(context: Context, packageNames: ArrayList<String>, printState
             }
         }
     }
-    if (printState) {
-        LazyColumn {
-            items(newData) { event ->
-                Text(text = event)
-            }
-        }
-    }
+
     return newData
 }
 
-@Composable
 fun getOldData(context: Context): ArrayList<String> {
     val topApps = topUsedApps(context)
     val oldData = printEventList(context, topApps, false,  true)
@@ -348,12 +366,17 @@ fun getPeaks() {
     println(res)
 }
 
+fun getSystemTime(): String {
+    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    return sdf.format(Date())
+}
+
 
 class MainActivity : ComponentActivity() {
 //get the calendar date
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        scheduleDailyWork()
         setContent {
             MyApplicationTheme {
                 // A surface container using the 'background' color from the theme
@@ -361,6 +384,21 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                 Row(modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { getPeaks() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Schedule Daily Peaks")
+                        }
+                        Button(
+                            onClick = { getOldData(this@MainActivity) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Get Old Data")
+                        }
+                    }
+
                     if (!Python.isStarted()) {
                         Python.start(AndroidPlatform(this))
                     }
@@ -368,19 +406,45 @@ class MainActivity : ComponentActivity() {
                     if (!readConfigFile(this)) {
                         initializeFiles(this)
                     }
-
-
                     // get data for today
-                    val todaysDat= printEventList(this, topUsedApps(this),  true, false)
-                    writeTextFileToDocuments(this, "data.txt", todaysDat.joinToString("\n"))
 
-                    ShowButton { getPeaks() }
+//                    ShowButton { getPeaks() }
 
-                }
+                    }
                 }
             }
         }
+    private fun scheduleDailyWork() {
+        // Calculate the initial delay time
+        val currentTimeMillis = System.currentTimeMillis()
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 11) // set desired hour
+            set(Calendar.MINUTE, 59) // set desired minute
+            set(Calendar.SECOND, 0)
+            if (timeInMillis <= currentTimeMillis) {
+                add(Calendar.DAY_OF_MONTH, 1)
+            }
+        }
+
+        val initialDelay = calendar.timeInMillis - currentTimeMillis
+
+        // Define the request
+        val dailyWorkRequest = PeriodicWorkRequest.Builder(
+            DailyTaskWorker::class.java,
+            24,
+            TimeUnit.HOURS
+        )
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+            .build()
+
+        // Schedule the work
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "DailyPeaksWork",
+            ExistingPeriodicWorkPolicy.REPLACE,
+            dailyWorkRequest
+        )
     }
+}
 @Composable
 fun ShowButton(onClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()){

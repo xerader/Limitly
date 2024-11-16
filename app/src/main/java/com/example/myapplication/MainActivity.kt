@@ -1,21 +1,19 @@
 package com.example.myapplication
-
+import androidx.core.app.ActivityCompat
 import DailyTaskWorker
-import android.app.AppOpsManager
-import android.app.usage.UsageEvents
-import android.app.usage.UsageStatsManager
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.provider.Settings
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,15 +21,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.example.myapplication.ui.theme.MyApplicationTheme
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -39,13 +37,6 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 
-fun ensureFolderExists(folderPath: String): Boolean {
-    val folder = File(folderPath)
-    if (!folder.exists()) {
-        return folder.mkdirs() // Creates the folder and returns true if successful
-    }
-    return true // Folder already exists
-}
 
 
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
@@ -128,18 +119,22 @@ fun getSystemTime(): String {
 
 
 class MainActivity : ComponentActivity() {
-//get the calendar date
+    private val CHANNEL_ID = "example_channel"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        checkNotificationPermission()
+        createNotificationChannel()
+
         scheduleDailyWork()
+
         setContent {
             MyApplicationTheme {
-                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                 Row(modifier = Modifier.fillMaxWidth()) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = { getPeaks() },
                             modifier = Modifier.weight(1f)
@@ -152,6 +147,12 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Text("Get Old Data")
                         }
+                        Button(
+                            onClick = { sendNotification() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Send Notification")
+                        }
                     }
 
                     if (!Python.isStarted()) {
@@ -161,16 +162,61 @@ class MainActivity : ComponentActivity() {
                     if (!readConfigFile(this)) {
                         initializeFiles(this)
                     }
-                    // get data for today
-
-//                    ShowButton { getPeaks() }
-
-                    }
                 }
             }
         }
+    }
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Example Channel"
+            val descriptionText = "Channel for example notifications"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+ private fun sendNotification() {
+    val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_notification) // Ensure this icon exists in your resources
+        .setContentTitle("Sample Notification")
+        .setContentText("This is an example notification.")
+        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+
+    with(NotificationManagerCompat.from(this@MainActivity)) {
+        if (ActivityCompat.checkSelfPermission(
+                this@MainActivity,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return
+        }
+        notify(1, builder.build())
+    }
+}
+
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // Android 13+
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+            }
+        }
+    }
+
+
     private fun scheduleDailyWork() {
-        // Calculate the initial delay time
         val currentTimeMillis = System.currentTimeMillis()
         val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 11) // set desired hour
@@ -183,7 +229,6 @@ class MainActivity : ComponentActivity() {
 
         val initialDelay = calendar.timeInMillis - currentTimeMillis
 
-        // Define the request
         val dailyWorkRequest = PeriodicWorkRequest.Builder(
             DailyTaskWorker::class.java,
             24,
@@ -192,30 +237,10 @@ class MainActivity : ComponentActivity() {
             .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
             .build()
 
-        // Schedule the work
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             "DailyPeaksWork",
             ExistingPeriodicWorkPolicy.REPLACE,
             dailyWorkRequest
         )
     }
-}
-@Composable
-fun ShowButton(onClick: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize()){
-        Button(onClick = onClick,
-            modifier = Modifier
-                .weight(2f)
-                .fillMaxWidth()
-        ) {
-            Text("Get Peaks") // Button label
-        }
-    }
-}
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
 }

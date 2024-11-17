@@ -1,8 +1,6 @@
-<accessibility-service
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<accessibility-service android:accessibilityEventTypes="typeWindowStateChanged|typeViewClicked"
+    android:packageNames=""
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:notificationTimeout="100"
     android:canRetrieveWindowContent="true"
-    android:packageNames="com.example.targetapp"
-    android:settingsActivity="com.example.YourAccessibilitySettingsActivity" />
+    xmlns:android="http://schemas.android.com/apk/res/android" />

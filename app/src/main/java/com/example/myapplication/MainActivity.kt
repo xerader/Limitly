@@ -4,6 +4,7 @@ import DailyTaskWorker
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.usage.UsageStatsManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
@@ -12,6 +13,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Row
@@ -35,7 +37,9 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 
 
 
@@ -120,11 +124,13 @@ fun getSystemTime(): String {
 
 class MainActivity : ComponentActivity() {
     private val CHANNEL_ID = "example_channel"
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         checkNotificationPermission()
         createNotificationChannel()
+        promptEnableAccessibilityService()
 
         scheduleDailyWork()
 
@@ -166,6 +172,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Example Channel"
@@ -180,47 +187,51 @@ class MainActivity : ComponentActivity() {
         }
     }
 
- private fun sendNotification() {
-    val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_notification) // Ensure this icon exists in your resources
-        .setContentTitle("Sample Notification")
-        .setContentText("This is an example notification.")
-        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+    private fun sendNotification() {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Sample Notification")
+            .setContentText("This is an example notification.")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
 
-    with(NotificationManagerCompat.from(this@MainActivity)) {
-        if (ActivityCompat.checkSelfPermission(
-                this@MainActivity,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            return
+        with(NotificationManagerCompat.from(this@MainActivity)) {
+            if (ActivityCompat.checkSelfPermission(
+                    this@MainActivity,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+            notify(1, builder.build())
         }
-        notify(1, builder.build())
     }
-}
-
 
     private fun checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // Android 13+
-            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    1
+                )
             }
         }
     }
 
+    private fun promptEnableAccessibilityService() {
+        Log.d("MainActivity", "Prompting user to enable Accessibility Service.")
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
 
     private fun scheduleDailyWork() {
         val currentTimeMillis = System.currentTimeMillis()
         val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 11) // set desired hour
-            set(Calendar.MINUTE, 59) // set desired minute
+            set(Calendar.HOUR_OF_DAY, 11)
+            set(Calendar.MINUTE, 59)
             set(Calendar.SECOND, 0)
             if (timeInMillis <= currentTimeMillis) {
                 add(Calendar.DAY_OF_MONTH, 1)

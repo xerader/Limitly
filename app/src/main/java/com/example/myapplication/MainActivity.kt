@@ -142,27 +142,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = { getPeaks() },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Schedule Daily Peaks")
-                        }
-                        Button(
-                            onClick = { getOldData(this@MainActivity) },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Get Old Data")
-                        }
-                        Button(
-                            onClick = { sendNotification() },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Send Notification")
-                        }
-                    }
-
+                    GoalSettingScreen(context = this)
                     if (!Python.isStarted()) {
                         Python.start(AndroidPlatform(this))
                     }
@@ -233,7 +213,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendNotification() {
+    fun sendNotification() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Sample Notification")

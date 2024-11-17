@@ -21,10 +21,12 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
+import java.security.KeyStore.LoadStoreParameter
 import java.util.Calendar
 
 class MyAccessibilityService() : AccessibilityService(), Parcelable {
     private var peakList: List<PeakEntry> = emptyList()
+    private var goalList: List<String> = emptyList()
 
     constructor(parcel: Parcel) : this() {
 
@@ -47,6 +49,7 @@ class MyAccessibilityService() : AccessibilityService(), Parcelable {
         createNotificationChannel()
         // Load peak data from file
         peakList = loadPeakData()
+        goalList = loadGoalData()
         Log.d("AccessibilityService", "TRYING: $peakList")
     }
 
@@ -76,9 +79,11 @@ class MyAccessibilityService() : AccessibilityService(), Parcelable {
                     println("Start time: $startTime")
                     println("End time: $endTime")
                     if (currentTime in startTime..endTime) {
+                        // make the message a random line in GoalList
+                        val message = goalList.random()
                     sendNotification(
                         "App Usage Alert",
-                        "$packageName is open during restricted hours."
+                        "$packageName is open! Why don't you try $message?"
                     )
                     }
                 }
@@ -158,6 +163,43 @@ class MyAccessibilityService() : AccessibilityService(), Parcelable {
         }
     }
 
+    private fun loadGoalData(): List<String>{
+        val goals = goalList.toMutableList()
+        try {
+            val filePath = "/storage/emulated/0/Documents/Limitly/goals.txt"
+            println(filePath)
+            val file = File(filePath)
+            if (file.exists()) {
+                println("GOALS file exists")
+                val reader = BufferedReader(InputStreamReader(FileInputStream(file)))
+                reader.forEachLine { line ->
+                    val parts = line.split(",")
+                    if (parts.size == 1) {
+                        try {
+                            val goal = parts[0].trim()
+                            goals.add(goal)
+                        } catch (e: Exception) {
+                            Log.e("AccessibilityService", "Error parsing goal data: ${e.message}")
+                        }
+                    }
+                }
+                reader.close()
+            } else {
+                Log.e("AccessibilityService", "File not found: $filePath")
+            }
+        } catch (e: Exception) {
+            Log.e("AccessibilityService", "Error loading goal data: ${e.message}")
+        }
+        // make sure goals is not empty
+        if (goals.isEmpty()) {
+            goals.add("Goal 1")
+            goals.add("Goal 2")
+            goals.add("Goal 3")
+            goals.add("Goal 4")
+            goals.add("Goal 5")
+        }
+        return goals
+    }
     private fun loadPeakData(): List<PeakEntry> {
         val peaks = peakList.toMutableList()
         try {

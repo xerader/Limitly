@@ -40,7 +40,8 @@ import java.util.concurrent.TimeUnit
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
@@ -131,8 +132,9 @@ class MainActivity : ComponentActivity() {
         checkNotificationPermission()
         createNotificationChannel()
         promptEnableAccessibilityService()
-
         scheduleDailyWork()
+//        val peakData: List<PeakEntry> = readPeaksFile()
+//        sendPeaksToService(peakData)
 
         setContent {
             MyApplicationTheme {
@@ -171,6 +173,50 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    data class PeakEntry(val packageName: String, val startTime: Long, val endTime: Long)
+
+    private fun readPeaksFile(): List<PeakEntry> {
+        val peaks = mutableListOf<PeakEntry>()
+        try {
+            // Adjust the path according to your application's files location
+            val folderPath = "Documents/Limitly/"
+
+            val selection = "${MediaStore.Files.FileColumns.RELATIVE_PATH}='$folderPath' AND " +
+                    "${MediaStore.Files.FileColumns.DISPLAY_NAME}='peaks.txt'"
+
+            println("Selection: $selection")
+            val inputStream = assets.open("$selection/peaks.txt")
+            val reader = BufferedReader(InputStreamReader(inputStream))
+            reader.forEachLine { line ->
+                val parts = line.split(",")
+//                if (parts.size == 3) {
+                    val packageName = parts[0].trim()
+                    val startTime = parts[1].trim().toLongOrNull() ?: 0L
+                    val endTime = parts[2].trim().toLongOrNull() ?: 0L
+
+                    // print out this data
+
+                    println("Package Name: $packageName")
+                    println("Start Time: $startTime")
+                    println("End Time: $endTime")
+
+                    peaks.add(PeakEntry(packageName, startTime, endTime))
+//                }
+            }
+            reader.close()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error reading peaks.txt: ${e.message}")
+        }
+        return peaks
+    }
+
+    private fun sendPeaksToService(peaks: List<PeakEntry>) {
+        // Custom code to send data to the Accessibility Service
+        val intent = Intent(this, MyAccessibilityService::class.java)
+        intent.putExtra("peakData", ArrayList(peaks)) // Make PeakEntry Serializable if necessary
+        startService(intent)
     }
 
     private fun createNotificationChannel() {
@@ -226,6 +272,7 @@ class MainActivity : ComponentActivity() {
         Log.d("MainActivity", "Prompting user to enable Accessibility Service.")
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
+
 
     private fun scheduleDailyWork() {
         val currentTimeMillis = System.currentTimeMillis()

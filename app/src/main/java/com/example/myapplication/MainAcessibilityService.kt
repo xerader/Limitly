@@ -1,8 +1,8 @@
 package com.example.myapplication
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -12,8 +12,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Parcel
 import android.os.Parcelable
+import android.text.TextUtils
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -21,8 +23,10 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
-import java.security.KeyStore.LoadStoreParameter
 import java.util.Calendar
+import android.content.ComponentName
+import android.provider.Settings
+import android.accessibilityservice.AccessibilityService
 
 class MyAccessibilityService() : AccessibilityService(), Parcelable {
     private var peakList: List<PeakEntry> = emptyList()
@@ -160,6 +164,28 @@ class MyAccessibilityService() : AccessibilityService(), Parcelable {
 
         override fun newArray(size: Int): Array<MyAccessibilityService?> {
             return arrayOfNulls(size)
+        }
+
+        @SuppressLint("ServiceCast")
+        fun isServiceEnabled(context: Context, serviceClass: Class<out AccessibilityService>): Boolean {
+            val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+            // Retrieve the comma-separated list of enabled services
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            // Construct the component name of the service we are checking for
+            val colonSplitter = TextUtils.SimpleStringSplitter(':')
+            colonSplitter.setString(enabledServices)
+
+            // Iterate through the list of enabled services and check against your service
+            while (colonSplitter.hasNext()) {
+                val componentName = colonSplitter.next()
+                if (componentName.equals(ComponentName(context, serviceClass).flattenToString(), ignoreCase = true)) {
+                    return true
+                }
+            }
+            return false
         }
     }
 

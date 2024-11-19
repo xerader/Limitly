@@ -4,25 +4,19 @@ import DailyTaskWorker
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.usage.UsageStatsManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -42,7 +36,27 @@ import android.os.Looper
 import android.provider.Settings
 import java.io.BufferedReader
 import java.io.InputStreamReader
-
+import android.os.Bundle
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.*
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: String) {
     val resolver = context.contentResolver
@@ -104,13 +118,13 @@ fun writeTextFileToDocuments(context: Context, fileName: String, fileContent: St
 
 
 
-fun getPeaks() {
+fun getPeaks(duration: String = "2") {
     val py = Python.getInstance()
     val pyf = py.getModule("main")
     val res = pyf.callAttr("main")
 
     val pyf2 = py.getModule("get_peaks")
-    val res2 = pyf2.callAttr("get_peaks")
+    val res2 = pyf2.callAttr("get_peaks", duration)
     println("HIIERERAARARA")
     println(res2)
 
@@ -129,26 +143,55 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!Python.isStarted()) {
+            Python.start(AndroidPlatform(this))
+        }
+
         checkNotificationPermission()
         createNotificationChannel()
+        // check if permission is granted
+        if (!hasUsageStatsPermission()) {
+            requestUsageStatsPermission()
+        }
+
         promptEnableAccessibilityService()
         scheduleDailyWork()
+        // initialize the StatsViewModel
+        val statsViewModel = StatsViewModel(application)
+
+        // If config file does not exist, create it
+        if (!readConfigFile(applicationContext)) {
+            (applicationContext)
+        }
+
 //        val peakData: List<PeakEntry> = readPeaksFile()
 //        sendPeaksToService(peakData)
 
         setContent {
             MyApplicationTheme {
+                var showStats by remember { mutableStateOf(false) }
+                var currentScreen by remember { mutableStateOf("goals") }
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    GoalSettingScreen(context = this)
-                    if (!Python.isStarted()) {
-                        Python.start(AndroidPlatform(this))
-                    }
+                    Column {
+                        when (currentScreen) {
+                            "stats" -> StatsScreen(onBack = { currentScreen = "goals" })
+                            "goals" -> GoalSettingScreen(context = this@MainActivity /* Add other required parameters */)
+                        }
 
-                    if (!readConfigFile(this)) {
-                        initializeFiles(this)
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        if (currentScreen == "goals") {
+                            Button(
+                                onClick = { currentScreen = "stats" },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("View Stats")
+                            }
+                        }
                     }
                 }
             }
@@ -157,47 +200,6 @@ class MainActivity : ComponentActivity() {
 
     data class PeakEntry(val packageName: String, val startTime: Long, val endTime: Long)
 
-    private fun readPeaksFile(): List<PeakEntry> {
-        val peaks = mutableListOf<PeakEntry>()
-        try {
-            // Adjust the path according to your application's files location
-            val folderPath = "Documents/Limitly/"
-
-            val selection = "${MediaStore.Files.FileColumns.RELATIVE_PATH}='$folderPath' AND " +
-                    "${MediaStore.Files.FileColumns.DISPLAY_NAME}='peaks.txt'"
-
-            println("Selection: $selection")
-            val inputStream = assets.open("$selection/peaks.txt")
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            reader.forEachLine { line ->
-                val parts = line.split(",")
-//                if (parts.size == 3) {
-                    val packageName = parts[0].trim()
-                    val startTime = parts[1].trim().toLongOrNull() ?: 0L
-                    val endTime = parts[2].trim().toLongOrNull() ?: 0L
-
-                    // print out this data
-
-                    println("Package Name: $packageName")
-                    println("Start Time: $startTime")
-                    println("End Time: $endTime")
-
-                    peaks.add(PeakEntry(packageName, startTime, endTime))
-//                }
-            }
-            reader.close()
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error reading peaks.txt: ${e.message}")
-        }
-        return peaks
-    }
-
-    private fun sendPeaksToService(peaks: List<PeakEntry>) {
-        // Custom code to send data to the Accessibility Service
-        val intent = Intent(this, MyAccessibilityService::class.java)
-        intent.putExtra("peakData", ArrayList(peaks)) // Make PeakEntry Serializable if necessary
-        startService(intent)
-    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -248,11 +250,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun promptEnableAccessibilityService() {
-        Log.d("MainActivity", "Prompting user to enable Accessibility Service.")
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
 
+    private fun promptEnableAccessibilityService() {
+        Log.d("MainActivity", "Checking if Accessibility Service is enabled.")
+
+        // Check if the MyAccessibilityService is enabled.
+        if (!MyAccessibilityService.isServiceEnabled(this, MyAccessibilityService::class.java)) {
+            Log.d("MainActivity", "Accessibility Service not enabled.")
+
+            // Prompt to enable the service by opening the accessibility settings.
+            // Delay is optional if needed to ensure smooth transition to the settings screen.
+            handler.postDelayed({
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }, 1000)
+        } else {
+            Log.d("MainActivity", "Accessibility Service is already enabled.")
+        }
+    }
 
     private fun scheduleDailyWork() {
         val currentTimeMillis = System.currentTimeMillis()

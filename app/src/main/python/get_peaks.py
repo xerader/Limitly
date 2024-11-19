@@ -1,11 +1,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import gaussian_kde
+from datetime import date
 from scipy.signal import find_peaks
 import pandas as pd
 import os
 
-def get_peaks():
+def get_peaks(date_range = '2'):
     os.chdir('/storage/emulated/0/Documents/Limitly/')
     # print out the contents of the current directory
     # print(os.listdir())
@@ -18,9 +19,16 @@ def get_peaks():
     # drop Duration\n
     df = df.drop(columns=[' Duration\n'])
 
+    # get the date range from 2 weeks before today
+
     df = df[1:]
     # print(df.head())
     df.columns = df.columns.str.strip()
+    today = date.today()
+    two_weeks_ago = today - pd.DateOffset(weeks=int(date_range))
+    df['Start Time'] = pd.to_datetime(df['Start Time'])
+
+    df = df[df['Start Time'] > two_weeks_ago]
 
     df['Hour'] = df['Start Time'].apply(lambda x: pd.to_datetime(x).hour +  pd.to_datetime(x).minute/60)
     # # Assuming df is a pandas DataFrame already loaded with 'Hour' and 'Package Name' columns

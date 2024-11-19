@@ -19,6 +19,10 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun GoalSettingScreen(context: Context) {
     var goals by remember { mutableStateOf(listOf("", "", "", "", "")) }
+    var expanded by remember { mutableStateOf(false) }
+    var selectedOption by remember { mutableStateOf("Select Duration") }
+    val options = listOf("1", "2", "3", "4")
+
 
     Column(
         modifier = Modifier
@@ -94,8 +98,8 @@ fun GoalSettingScreen(context: Context) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             val actions = listOf(
-                "Obtain Peak Data" to { /* getPeaks() */ },
-                "Get Old Data" to { /* getOldData(context) */ },
+                "Obtain Peak Data" to { getPeaks(selectedOption) },
+                "Get Old Data" to { getOldData(context) },
                 "Send Notification" to { (context as? MainActivity)?.sendNotification() }
             )
 
@@ -109,6 +113,27 @@ fun GoalSettingScreen(context: Context) {
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
                 ) {
                     Text(label, color = Color.White, textAlign = TextAlign.Center)
+                }
+            }
+        }
+
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { expanded = true }) {
+                Text(selectedOption)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            selectedOption = option
+                            expanded = false
+                        }
+                    )
                 }
             }
         }

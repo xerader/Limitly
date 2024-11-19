@@ -42,7 +42,7 @@ fun topUsedApps(context: Context): ArrayList<String> {
 
     // Sort the apps by total usage time in descending order and get the top 10
     usageStats = usageStats
-//        .filter { !it.packageName.contains("android", ignoreCase = true) && !it.packageName.contains("frontpage", ignoreCase = true) }
+        .filter { !it.packageName.contains("com.android.launcher", ignoreCase = true )}
         .sortedByDescending { it.totalTimeInForeground }
         .take(10)
     // get the names of the top 10 apps

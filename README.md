@@ -3,6 +3,9 @@
 
 An application to detect and monitor the screen time usage of the most frequently used applications and use notifications to remove space  
 
+![image](https://github.com/user-attachments/assets/c0965b88-95a1-4e69-8fa3-8dcbc25ac470)
+
+
 # Needs
 - The motivation for this project arises from my attempts to cut my phone usage. The usual methods to do so, such as app timers, proved to be temporary solutions. Through anecdotal experience, I found the impact of the location and time period when I engaged in my phone usage to be significant in my habit. This was substantiated by books I read such as Atomic Habits by James Clear and Dopamine Nation by Dr. Anna Lembke.
 
